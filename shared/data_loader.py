@@ -10,7 +10,6 @@ def load_and_preprocess_data(file_name="data.csv"):
     file_path = os.path.join(project_root, file_name)
     
     if not os.path.exists(file_path):
-        # Jei failas vis tiek nerastas, bandoma ieškoti tiesioginiu keliu
         file_path = file_name
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Nepavyko rasti duomenų failo '{file_name}' nei projekto šaknyje, nei nurodytu keliu.")
