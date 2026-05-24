@@ -14,6 +14,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from shared.visualize import print_results_table
 from shared.data_loader import load_and_preprocess_data
 
 print("Loading and Preparing Data...")
@@ -50,6 +51,9 @@ for p in itertools.combinations(columns, 2):
     max_sil = df_metrics['silhouette'].max()
     best_k_for_pair = df_metrics.loc[df_metrics['silhouette'].idxmax(), 'k']
     
+    metrics = {}
+    for _, r in df_metrics.iterrows():
+        metrics[int(r['k'])] = {'inertia': r['inertia'], 'silhouette': r['silhouette']}
     pairs_results.append({
         'Pair': f"{p[0]}, {p[1]}",
         'Max Silhouette': max_sil,
@@ -57,11 +61,16 @@ for p in itertools.combinations(columns, 2):
         'Inertias': inertias,
         'Silhouettes': silhouettes,
         'DataFrame': df_metrics,
-        'Data': X_pair
+        'Data': X_pair,
+        'metrics': metrics
     })
 
 pairs_results.sort(key=lambda x: x['Max Silhouette'], reverse=True)
 top_3_pairs = pairs_results[:3]
+
+# Add 'pair' key alias for print_results_table compatibility
+for r in pairs_results:
+    r['pair'] = r['Pair']
 
 table_data = []
 for res in pairs_results:
@@ -76,10 +85,6 @@ for res in pairs_results:
         
     table_data.append(row)
 
-print("\n--- Top Pairs Summary Table Data ---")
-for i, res in enumerate(top_3_pairs):
-    print(f"Rank {i+1}: {res['Pair']} | Best k={res['Best k']} | Max Silhouette={res['Max Silhouette']:.4f}")
-
 plt.close('all')
 fig, axes = plt.subplots(3, 3, figsize=(20, 15))
 
@@ -91,23 +96,24 @@ for i, res in enumerate(top_3_pairs):
     km_best = KMeans(n_clusters=best_k, random_state=42).fit(X_pair)
     axes[i, 0].scatter(X_pair.iloc[:, 0], X_pair.iloc[:, 1], c=km_best.labels_, cmap='viridis')
     axes[i, 0].set_title(f"Data: {pair_name} (k={best_k})")
-    
+
     axes[i, 1].plot(range(2, 9), res['Inertias'], marker='o', color='orange')
     axes[i, 1].set_title(f"Inertia: {pair_name}")
     axes[i, 1].set_xlabel("k")
-    
+
     labels = km_best.labels_
     sil_samples = silhouette_samples(X_pair, labels)
     unique_labels = np.unique(labels)
+    viridis = plt.cm.get_cmap('viridis', best_k)
     y_lower = 10
-    
+
     for label in unique_labels:
         cluster_sil_values = sil_samples[labels == label]
         cluster_sil_values.sort()
         size = cluster_sil_values.shape[0]
         y_upper = y_lower + size
-        axes[i, 2].hlines(y=y_lower, xmin=0, xmax=cluster_sil_values.max(), color='teal', linewidth=2)
-        axes[i, 2].fill_betweenx(np.arange(y_lower, y_upper), 0, cluster_sil_values, facecolor='teal', alpha=0.7)
+        axes[i, 2].hlines(y=y_lower, xmin=0, xmax=cluster_sil_values.max(), color=viridis(label), linewidth=2)
+        axes[i, 2].fill_betweenx(np.arange(y_lower, y_upper), 0, cluster_sil_values, facecolor=viridis(label), alpha=0.7)
         axes[i, 2].text(0.05, (y_lower + y_upper)/2, str(label), va='center')
         y_lower = y_upper + 10
         
@@ -141,6 +147,45 @@ top_3_triplets = triplets_results[:3]
 print("\n--- Top Triplets Summary ---")
 for i, res in enumerate(top_3_triplets):
     print(f"Rank {i+1}: {res['Triplet']} | Best k={res['Best k']} | Max Silhouette={res['Max Silhouette']:.4f}")
+
+# Collect all (pair, k) silhouette scores
+all_scores = []
+for res in pairs_results:
+    for _, r in res['DataFrame'].iterrows():
+        all_scores.append({
+            'Combination': res['Pair'],
+            'Dimension': 2,
+            'k': r['k'],
+            'Silhouette': r['silhouette'],
+            'Inertia': r['inertia']
+        })
+
+all_scores.sort(key=lambda x: x['Silhouette'], reverse=True)
+
+# Keep only unique combinations (best silhouette per combination)
+seen = set()
+unique_scores = []
+for s in all_scores:
+    if s['Combination'] not in seen:
+        seen.add(s['Combination'])
+        unique_scores.append(s)
+
+print("\n--- Top 10 Attribute Combinations by Silhouette Coefficient ---")
+for i, s in enumerate(unique_scores[:10]):
+    print(f"Rank {i+1}: [{s['Dimension']}D] {s['Combination']} | k={s['k']} | Silhouette={s['Silhouette']:.4f} | Inertia={s['Inertia']:.2f}")
+
+# Find the top 10 unique pairs in pairs_results order and print detailed table
+top_10_pairs_for_table = []
+seen_pairs = set()
+for res in pairs_results:
+    if res['Pair'] not in seen_pairs:
+        seen_pairs.add(res['Pair'])
+        top_10_pairs_for_table.append(res)
+    if len(top_10_pairs_for_table) == 10:
+        break
+
+print("\n--- Detailed Results Table (Top 10 Pairs) ---")
+print_results_table(top_10_pairs_for_table, top_n=10)
 
 plt.close('all')
 fig = plt.figure(figsize=(20, 15))

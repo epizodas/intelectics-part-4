@@ -21,6 +21,8 @@ def load_and_preprocess_data(file_name="data.csv"):
     elif df.columns[0] == 'Unnamed: 0':
         df = df.drop(columns=[df.columns[0]])
 
+    df.drop(df[df.density > 1].index, inplace=True)
+
     continuous_cols = [
         'violent', 'murder', 'robbery', 'prisoners', 
         'afam', 'cauc', 'male', 'population', 'income', 'density'
