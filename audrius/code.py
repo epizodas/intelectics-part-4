@@ -131,6 +131,9 @@ for t in itertools.combinations(columns, 3):
     df_metrics, inertias, silhouettes = run_kmeans_analysis(X_trip)
     max_sil = df_metrics['silhouette'].max()
     
+    metrics = {}
+    for _, r in df_metrics.iterrows():
+        metrics[int(r['k'])] = {'inertia': r['inertia'], 'silhouette': r['silhouette']}
     triplets_results.append({
         'Triplet': f"{t[0]}, {t[1]}, {t[2]}",
         'Max Silhouette': max_sil,
@@ -138,11 +141,16 @@ for t in itertools.combinations(columns, 3):
         'Inertias': inertias,
         'Silhouettes': silhouettes,
         'DataFrame': df_metrics,
-        'Data': X_trip
+        'Data': X_trip,
+        'metrics': metrics
     })
 
 triplets_results.sort(key=lambda x: x['Max Silhouette'], reverse=True)
 top_3_triplets = triplets_results[:3]
+
+# Add 'pair' key alias for print_results_table compatibility
+for r in triplets_results:
+    r['pair'] = r['Triplet']
 
 print("\n--- Top Triplets Summary ---")
 for i, res in enumerate(top_3_triplets):
@@ -187,27 +195,76 @@ for res in pairs_results:
 print("\n--- Detailed Results Table (Top 10 Pairs) ---")
 print_results_table(top_10_pairs_for_table, top_n=10)
 
+# Top 10 unique triplets
+top_10_triplets_for_table = []
+seen_triplets = set()
+for res in triplets_results:
+    if res['Triplet'] not in seen_triplets:
+        seen_triplets.add(res['Triplet'])
+        top_10_triplets_for_table.append(res)
+    if len(top_10_triplets_for_table) == 10:
+        break
+
+print("\n--- Detailed Results Table (Top 10 Triplets) ---")
+print_results_table(top_10_triplets_for_table, top_n=10)
+
 plt.close('all')
 fig = plt.figure(figsize=(20, 15))
+
+# for i, res in enumerate(top_3_triplets):
+#     triplet_name = res['Triplet']
+#     X_trip = res['Data']
+#     best_k = int(res['Best k'])
+    
+#     ax = fig.add_subplot(2, 3, i+1, projection='3d')
+#     km_best = KMeans(n_clusters=best_k, random_state=42).fit(X_trip)
+#     scatter = ax.scatter(X_trip.iloc[:, 0], X_trip.iloc[:, 1], X_trip.iloc[:, 2], c=km_best.labels_, cmap='viridis')
+#     ax.set_title(f"3D Data: {triplet_name} (k={best_k})")
+#     triplet_cols = [c.strip() for c in triplet_name.split(',')]
+#     ax.set_xlabel(triplet_cols[0])
+#     ax.set_ylabel(triplet_cols[1])
+#     ax.set_zlabel(triplet_cols[2])
+    
+#     ax_in = fig.add_subplot(2, 3, i+4)
+#     ax_in.plot(range(2, 9), res['Inertias'], marker='o', color='red')
+#     ax_in.set_title(f"Inertia: {triplet_name}")
+#     ax_in.set_xlabel("k")
+    
+fig, axes = plt.subplots(3, 3, figsize=(20, 15))
 
 for i, res in enumerate(top_3_triplets):
     triplet_name = res['Triplet']
     X_trip = res['Data']
     best_k = int(res['Best k'])
     
-    ax = fig.add_subplot(2, 3, i+1, projection='3d')
     km_best = KMeans(n_clusters=best_k, random_state=42).fit(X_trip)
-    scatter = ax.scatter(X_trip.iloc[:, 0], X_trip.iloc[:, 1], X_trip.iloc[:, 2], c=km_best.labels_, cmap='viridis')
-    ax.set_title(f"3D Data: {triplet_name} (k={best_k})")
-    triplet_cols = [c.strip() for c in triplet_name.split(',')]
-    ax.set_xlabel(triplet_cols[0])
-    ax.set_ylabel(triplet_cols[1])
-    ax.set_zlabel(triplet_cols[2])
-    
-    ax_in = fig.add_subplot(2, 3, i+4)
-    ax_in.plot(range(2, 9), res['Inertias'], marker='o', color='red')
-    ax_in.set_title(f"Inertia: {triplet_name}")
-    ax_in.set_xlabel("k")
+    axes[i, 0] = fig.add_subplot(3, 3, i*3+1, projection='3d')
+    axes[i, 0].scatter(X_trip.iloc[:, 0], X_trip.iloc[:, 1], X_trip.iloc[:, 2], c=km_best.labels_, cmap='viridis')
+    axes[i, 0].set_title(f"Data: {triplet_name} (k={best_k})")
+
+    axes[i, 1].plot(range(2, 9), res['Inertias'], marker='o', color='orange')
+    axes[i, 1].set_title(f"Inertia: {triplet_name}")
+    axes[i, 1].set_xlabel("k")
+
+    labels = km_best.labels_
+    sil_samples = silhouette_samples(X_trip, labels)
+    unique_labels = np.unique(labels)
+    viridis = plt.cm.get_cmap('viridis', best_k)
+    y_lower = 10
+
+    for label in unique_labels:
+        cluster_sil_values = sil_samples[labels == label]
+        cluster_sil_values.sort()
+        size = cluster_sil_values.shape[0]
+        y_upper = y_lower + size
+        axes[i, 2].hlines(y=y_lower, xmin=0, xmax=cluster_sil_values.max(), color=viridis(label), linewidth=2)
+        axes[i, 2].fill_betweenx(np.arange(y_lower, y_upper), 0, cluster_sil_values, facecolor=viridis(label), alpha=0.7)
+        axes[i, 2].text(0.05, (y_lower + y_upper)/2, str(label), va='center')
+        y_lower = y_upper + 10
+        
+    axes[i, 2].axvline(x=silhouette_score(X_trip, labels), color="red", linestyle="--")
+    axes[i, 2].set_title(f"Silhouette: {triplet_name}")
+    axes[i, 2].set_xlabel("Silhouette Coeff.")
 
 plt.tight_layout()
 plt.savefig("audrius/task2_triplets_3d.png", dpi=150, bbox_inches='tight')
