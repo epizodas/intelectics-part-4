@@ -13,49 +13,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from shared.data_loader import load_and_preprocess_data
 from shared.visualize import print_results_table, plot_task3_results, plot_task4_results_3d, print_m_dim_table
 
-
-class SOMClusterer(BaseEstimator, ClusterMixin):
-    def __init__(self, n_clusters=2, epochs=10, random_state=42):
-        self.n_clusters = n_clusters
-        self.epochs = epochs
-        self.random_state = random_state
-        self.cluster_centers_ = None  # actual data means per cluster
-        self.labels_ = None
-
-    def fit(self, X, y=None):
-        X_arr = np.array(X)
-        n_samples = len(X_arr)
-
-        num_iterations = self.epochs * n_samples
-
-        som = MiniSom(
-            x=1, y=self.n_clusters, input_len=X_arr.shape[1],
-            sigma=1.0, learning_rate=0.5,
-            random_seed=self.random_state,
-        )
-        som.random_weights_init(X_arr)
-        som.train_random(X_arr, num_iterations, verbose=False)
-
-        raw_labels = np.array([som.winner(s)[1] for s in X_arr])
-
-        unique = np.unique(raw_labels)
-        remap = {old: new for new, old in enumerate(unique)}
-        labels = np.array([remap[l] for l in raw_labels])
-
-        self.labels_ = labels
-
-        actual_k = len(unique)
-        self.cluster_centers_ = np.array([
-            X_arr[labels == c].mean(axis=0) for c in range(actual_k)
-        ])
-
-        return self
-
-    def fit_predict(self, X, y=None):
-        self.fit(X)
-        return self.labels_
-
-
 def run_som_clustering(data, k, epochs=10, random_state=42):
     data_arr = np.array(data)
     n_samples = len(data_arr)
