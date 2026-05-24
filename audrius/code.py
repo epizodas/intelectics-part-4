@@ -68,7 +68,6 @@ for p in itertools.combinations(columns, 2):
 pairs_results.sort(key=lambda x: x['Max Silhouette'], reverse=True)
 top_3_pairs = pairs_results[:3]
 
-# Add 'pair' key alias for print_results_table compatibility
 for r in pairs_results:
     r['pair'] = r['Pair']
 
@@ -156,7 +155,6 @@ print("\n--- Top Triplets Summary ---")
 for i, res in enumerate(top_3_triplets):
     print(f"Rank {i+1}: {res['Triplet']} | Best k={res['Best k']} | Max Silhouette={res['Max Silhouette']:.4f}")
 
-# Collect all (pair, k) silhouette scores
 all_scores = []
 for res in pairs_results:
     for _, r in res['DataFrame'].iterrows():
@@ -170,7 +168,6 @@ for res in pairs_results:
 
 all_scores.sort(key=lambda x: x['Silhouette'], reverse=True)
 
-# Keep only unique combinations (best silhouette per combination)
 seen = set()
 unique_scores = []
 for s in all_scores:
@@ -182,7 +179,6 @@ print("\n--- Top 10 Attribute Combinations by Silhouette Coefficient ---")
 for i, s in enumerate(unique_scores[:10]):
     print(f"Rank {i+1}: [{s['Dimension']}D] {s['Combination']} | k={s['k']} | Silhouette={s['Silhouette']:.4f} | Inertia={s['Inertia']:.2f}")
 
-# Find the top 10 unique pairs in pairs_results order and print detailed table
 top_10_pairs_for_table = []
 seen_pairs = set()
 for res in pairs_results:
@@ -195,7 +191,6 @@ for res in pairs_results:
 print("\n--- Detailed Results Table (Top 10 Pairs) ---")
 print_results_table(top_10_pairs_for_table, top_n=10)
 
-# Top 10 unique triplets
 top_10_triplets_for_table = []
 seen_triplets = set()
 for res in triplets_results:
@@ -211,25 +206,6 @@ print_results_table(top_10_triplets_for_table, top_n=10)
 plt.close('all')
 fig = plt.figure(figsize=(20, 15))
 
-# for i, res in enumerate(top_3_triplets):
-#     triplet_name = res['Triplet']
-#     X_trip = res['Data']
-#     best_k = int(res['Best k'])
-    
-#     ax = fig.add_subplot(2, 3, i+1, projection='3d')
-#     km_best = KMeans(n_clusters=best_k, random_state=42).fit(X_trip)
-#     scatter = ax.scatter(X_trip.iloc[:, 0], X_trip.iloc[:, 1], X_trip.iloc[:, 2], c=km_best.labels_, cmap='viridis')
-#     ax.set_title(f"3D Data: {triplet_name} (k={best_k})")
-#     triplet_cols = [c.strip() for c in triplet_name.split(',')]
-#     ax.set_xlabel(triplet_cols[0])
-#     ax.set_ylabel(triplet_cols[1])
-#     ax.set_zlabel(triplet_cols[2])
-    
-#     ax_in = fig.add_subplot(2, 3, i+4)
-#     ax_in.plot(range(2, 9), res['Inertias'], marker='o', color='red')
-#     ax_in.set_title(f"Inertia: {triplet_name}")
-#     ax_in.set_xlabel("k")
-    
 fig, axes = plt.subplots(3, 3, figsize=(20, 15))
 
 for i, res in enumerate(top_3_triplets):
@@ -306,6 +282,11 @@ print("\nStep 4: Full Dimensionality Analysis...")
 
 df_full_metrics, full_inertias, full_silhouettes = run_kmeans_analysis(scaled_df)
 
+best_k_full = int(df_full_metrics.loc[df_full_metrics['silhouette'].idxmax(), 'k'])
+print(f"Best k for Full Dimensionality: {best_k_full}")
+
+top_ks = df_full_metrics.nlargest(3, 'silhouette')['k'].tolist()
+
 plt.figure(figsize=(10, 6))
 plt.plot(range(2, 9), full_inertias, marker='o', linestyle='--', color='green')
 plt.title("Elbow Method (Full Dimensionality)")
@@ -315,36 +296,42 @@ plt.grid(True)
 plt.savefig("audrius/task3_elbow.png", dpi=150, bbox_inches='tight')
 print("Saved: audrius/task3_elbow.png")
 
-best_k_full = int(df_full_metrics.loc[df_full_metrics['silhouette'].idxmax(), 'k'])
-print(f"Best k for Full Dimensionality: {best_k_full}")
-
-top_ks = df_full_metrics.nlargest(3, 'silhouette')['k'].tolist()
 plt.close('all')
-fig, axes = plt.subplots(1, 3, figsize=(20, 6))
+fig, axes = plt.subplots(3, 2, figsize=(14, 18))
 
 for i, k_val in enumerate(top_ks):
+    axes[i, 0].plot(range(2, 9), full_inertias, marker='o', linestyle='--', color='green')
+    axes[i, 0].axvline(x=k_val, color='red', linestyle='--', label=f'Best k={k_val}')
+    axes[i, 0].set_title(f"Elbow Method (m={len(columns)}, k={k_val})")
+    axes[i, 0].set_xlabel("Number of Clusters (k)")
+    axes[i, 0].set_ylabel("Inertia")
+    axes[i, 0].grid(True)
+
+    # Silhouette diagram
     km = KMeans(n_clusters=k_val, random_state=42).fit(scaled_df)
     labels = km.labels_
     sil_samples = silhouette_samples(scaled_df, labels)
     unique_labels = np.unique(labels)
+    viridis = plt.cm.get_cmap('viridis', k_val)
     y_lower = 10
-    
+
     for label in unique_labels:
         cluster_sil_values = sil_samples[labels == label]
         cluster_sil_values.sort()
         size = cluster_sil_values.shape[0]
         y_upper = y_lower + size
-        axes[i].hlines(y=y_lower, xmin=0, xmax=cluster_sil_values.max(), color='purple', linewidth=2)
-        axes[i].fill_betweenx(np.arange(y_lower, y_upper), 0, cluster_sil_values, facecolor='purple', alpha=0.7)
-        axes[i].text(0.05, (y_lower + y_upper)/2, str(label), va='center')
+        axes[i, 1].hlines(y=y_lower, xmin=0, xmax=cluster_sil_values.max(), color=viridis(label), linewidth=2)
+        axes[i, 1].fill_betweenx(np.arange(y_lower, y_upper), 0, cluster_sil_values, facecolor=viridis(label), alpha=0.7)
+        axes[i, 1].text(0.05, (y_lower + y_upper)/2, str(label), va='center')
         y_lower = y_upper + 10
-        
-    axes[i].axvline(x=silhouette_score(scaled_df, labels), color="red", linestyle="--")
-    axes[i].set_title(f"Silhouette Diagram (k={k_val})")
-    axes[i].set_xlabel("Silhouette Coeff.")
+
+    axes[i, 1].axvline(x=silhouette_score(scaled_df, labels), color="red", linestyle="--")
+    axes[i, 1].set_title(f"Silhouette Diagram (m={len(columns)}, k={k_val})")
+    axes[i, 1].set_xlabel("Silhouette Coeff.")
 
 plt.tight_layout()
-plt.savefig("audrius/task3_silhouette.png", dpi=150, bbox_inches='tight')
+plt.savefig("audrius/task3_full_analysis.png", dpi=150, bbox_inches='tight')
+print("Saved: audrius/task3_full_analysis.png")
 
 
 def generate_clustergram_plot(scaled_df, output_filename):
@@ -412,8 +399,26 @@ def generate_clustergram_plot(scaled_df, output_filename):
     print(f"Clustergram saved: {output_filename}")
     plt.close()
 
+def print_m_dim_table(metrics):
+    print("\n### m-Dimensijų (m=10) K-Vidurkių klasterizacijos rezultatai\n")
+    header = "|Rezultatų įverčiai|k=2|k=3|k=4|k=5|k=6|k=7|k=8|"
 
-# Generate clustergram
+    inertia_row = "|**Inercija**|"
+    sil_row = "|**Silueto koef.**|"
+
+    for k in range(2, 9):
+        inertia_row += f"{metrics[k]['inertia']:.1f}|"
+        sil_row += f"{metrics[k]['silhouette']:.3f}|"
+
+    print(header)
+    print(inertia_row)
+    print(sil_row)
+
+
+# Build metrics dict for print_m_dim_table
+full_metrics = {}
+for _, r in df_full_metrics.iterrows():
+    full_metrics[int(r['k'])] = {'inertia': r['inertia'], 'silhouette': r['silhouette']}
+
+print_m_dim_table(full_metrics)
 generate_clustergram_plot(scaled_df, "audrius/task3_clustergram.png")
-
-print("\nAnalysis Complete.")
