@@ -15,20 +15,6 @@ from shared.visualize import print_results_table, plot_task3_results, plot_task4
 
 
 class SOMClusterer(BaseEstimator, ClusterMixin):
-    """
-    Sklearn-compatible SOM clusterer using a 1×k linear map.
-
-    Parameters
-    ----------
-    n_clusters : int
-        Number of neurons (= desired clusters).
-    epochs : int
-        Number of full passes through the data during training.
-        Each epoch = len(X) individual weight-update steps.
-    random_state : int
-        Seed for reproducibility.
-    """
-
     def __init__(self, n_clusters=2, epochs=10, random_state=42):
         self.n_clusters = n_clusters
         self.epochs = epochs
@@ -40,9 +26,6 @@ class SOMClusterer(BaseEstimator, ClusterMixin):
         X_arr = np.array(X)
         n_samples = len(X_arr)
 
-        # FIX 1: num_iterations = epochs × n_samples (not a raw iteration count).
-        # With epochs=10 and 300 samples this gives 3 000 updates, versus the
-        # original hard-coded 500 (= 1.67 passes) that caused severe under-training.
         num_iterations = self.epochs * n_samples
 
         som = MiniSom(
@@ -55,19 +38,12 @@ class SOMClusterer(BaseEstimator, ClusterMixin):
 
         raw_labels = np.array([som.winner(s)[1] for s in X_arr])
 
-        # FIX 2: remap labels so they are always 0 … (actual_k - 1).
-        # Empty neurons (never the BMU) leave gaps in raw_labels which break
-        # silhouette_score and cluster-centre indexing.
         unique = np.unique(raw_labels)
         remap = {old: new for new, old in enumerate(unique)}
         labels = np.array([remap[l] for l in raw_labels])
 
         self.labels_ = labels
 
-        # FIX 3: cluster_centers_ = actual mean of assigned points per cluster.
-        # The original code stored SOM neuron weight vectors, which are smoothed
-        # by the neighbourhood function and do NOT equal the data centroid.
-        # Using weight vectors as centroids can produce non-monotonic elbow curves.
         actual_k = len(unique)
         self.cluster_centers_ = np.array([
             X_arr[labels == c].mean(axis=0) for c in range(actual_k)
@@ -81,27 +57,9 @@ class SOMClusterer(BaseEstimator, ClusterMixin):
 
 
 def run_som_clustering(data, k, epochs=10, random_state=42):
-    """
-    Train a 1×k SOM on `data` and return (labels, inertia, silhouette).
-
-    Parameters
-    ----------
-    data : array-like, shape (n_samples, n_features)
-    k    : int – number of clusters / SOM neurons
-    epochs : int – number of full passes through the data (NOT total iterations).
-                   Changing the interpretation fixes the original under-training bug.
-    random_state : int – RNG seed
-
-    Returns
-    -------
-    labels    : np.ndarray, shape (n_samples,), values in 0 … actual_k-1
-    inertia   : float – within-cluster sum of squared distances to actual data means
-    sil_coef  : float – silhouette score (-1 if only one cluster found)
-    """
     data_arr = np.array(data)
     n_samples = len(data_arr)
 
-    # FIX 1: proper iteration count
     num_iterations = epochs * n_samples
 
     som = MiniSom(
@@ -114,14 +72,10 @@ def run_som_clustering(data, k, epochs=10, random_state=42):
 
     raw_labels = np.array([som.winner(s)[1] for s in data_arr])
 
-    # FIX 2: remap to close gaps from empty neurons
     unique = np.unique(raw_labels)
     remap = {old: new for new, old in enumerate(unique)}
     labels = np.array([remap[l] for l in raw_labels])
 
-    # FIX 3: inertia using actual data cluster means (not SOM weight vectors).
-    # This guarantees monotonically non-increasing inertia as k grows and
-    # produces well-shaped elbow curves consistent with the k-means definition.
     actual_k = len(unique)
     inertia = 0.0
     for c in range(actual_k):
@@ -197,9 +151,6 @@ def analyze_m_dimensional(scaled_df):
 
     return metrics
 
-
-
-
 def plot_m_dim_results(metrics, scaled_df, output_filename):
     k_scores = [(k, metrics[k]['silhouette']) for k in range(2, 9)]
     k_scores.sort(key=lambda x: x[1], reverse=True)
@@ -274,7 +225,6 @@ def generate_clustergram_plot(scaled_df, output_filename):
     for k in ks:
         labels, _, _ = run_som_clustering(data_arr, k, random_state=42)
 
-        # Compute raw centers in PC1 space for each cluster
         actual_k = len(np.unique(labels))
         raw_centers = np.array([
             np.mean(data_pc1[labels == c]) if np.any(labels == c) else 0.0
